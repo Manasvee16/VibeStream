@@ -5,6 +5,7 @@ import {
   getVideoUploadUrl,
   getThumbnailUploadUrl,
   saveVideoDetails,
+  getVideoProcessingStatus,
 } from "@/lib/actions/video";
 import { useRouter } from "next/navigation";
 import { FileInput, FormField } from "@/components";
@@ -106,40 +107,74 @@ const UploadPage = () => {
         return;
       }
 
+      // Step 1: Get video upload URL
       const {
         videoId,
         uploadUrl: videoUploadUrl,
         accessKey: videoAccessKey,
       } = await getVideoUploadUrl();
 
-      if (!videoUploadUrl || !videoAccessKey)
-        throw new Error("Failed to get video upload credentials");
+      if (!videoUploadUrl || !videoAccessKey) {
+        setError("Failed to get video upload credentials");
+        return;
+      }
 
-      await uploadFileToBunny(video.file, videoUploadUrl, videoAccessKey);
+      // Step 2: Upload video
+      try {
+        await uploadFileToBunny(video.file, videoUploadUrl, videoAccessKey);
+      } catch (uploadError) {
+        console.error("Video upload error:", uploadError);
+        setError("Failed to upload video. Please try again.");
+        return;
+      }
 
+      // Step 3: Get thumbnail credentials
       const {
         uploadUrl: thumbnailUploadUrl,
         cdnUrl: thumbnailCdnUrl,
         accessKey: thumbnailAccessKey,
       } = await getThumbnailUploadUrl(videoId);
 
-      if (!thumbnailUploadUrl || !thumbnailCdnUrl || !thumbnailAccessKey)
-        throw new Error("Failed to get thumbnail upload credentials");
+      if (!thumbnailUploadUrl || !thumbnailCdnUrl || !thumbnailAccessKey) {
+        setError("Failed to get thumbnail upload credentials");
+        return;
+      }
 
-      await uploadFileToBunny(
-        thumbnail.file,
-        thumbnailUploadUrl,
-        thumbnailAccessKey
-      );
+      // Step 4: Upload thumbnail
+      try {
+        await uploadFileToBunny(
+          thumbnail.file,
+          thumbnailUploadUrl,
+          thumbnailAccessKey
+        );
+      } catch (uploadError) {
+        console.error("Thumbnail upload error:", uploadError);
+        setError("Failed to upload thumbnail. Please try again.");
+        return;
+      }
 
-      await saveVideoDetails({
-        videoId,
-        thumbnailUrl: thumbnailCdnUrl,
-        ...formData,
-        duration: videoDuration,
-      });
-
-      router.push(`/video/${videoId}`);
+      // Step 5: Save video details
+      try {
+        await saveVideoDetails({
+          videoId,
+          thumbnailUrl: thumbnailCdnUrl,
+          ...formData,
+          duration: videoDuration,
+        });
+        
+        // Step 6: Wait for video processing
+        const processingCheck = await getVideoProcessingStatus(videoId);
+        if (!processingCheck.isProcessed) {
+          // Wait for processing to complete
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+        
+        router.push(`/video/${videoId}`);
+      } catch (saveError) {
+        console.error("Save details error:", saveError);
+        setError("Failed to save video details. Please try again.");
+        return;
+      }
     } catch (error) {
       console.error("Error submitting form:", error);
     } finally {
