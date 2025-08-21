@@ -17,6 +17,12 @@ const uploadFileToBunny = async (
   uploadUrl: string,
   accessKey: string
 ): Promise<void> => {
+  console.log('📤 Starting upload to BunnyCDN...', {
+    fileSize: `${(file.size / (1024 * 1024)).toFixed(2)}MB`,
+    fileType: file.type,
+    uploadUrl
+  });
+
   try {
     const response = await fetch(uploadUrl, {
       method: "PUT",
@@ -29,7 +35,7 @@ const uploadFileToBunny = async (
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Upload failed:', {
+      console.error('❌ Upload failed:', {
         status: response.status,
         statusText: response.statusText,
         errorText,
@@ -37,8 +43,9 @@ const uploadFileToBunny = async (
       });
       throw new Error(`Upload failed: ${response.status} - ${errorText}`);
     }
+    console.log('✅ Upload successful to BunnyCDN');
   } catch (error) {
-    console.error('Upload error:', error);
+    console.error('❌ Upload error:', error);
     throw error;
   }
 };
@@ -107,21 +114,36 @@ const UploadPage = () => {
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
-
     setIsSubmitting(true);
+    setError(null);
+    let uploadedVideoId = '';
+
+    console.log('🚀 Starting video upload process...');
 
     try {
+      // Validation
+      console.log('🔍 Validating form data and files...');
       if (!video.file || !thumbnail.file) {
+        console.log('❌ Validation failed: Missing files');
         setError("Please upload video and thumbnail files.");
         return;
       }
 
       if (!formData.title || !formData.description) {
+        console.log('❌ Validation failed: Missing required fields');
         setError("Please fill in all required fields.");
         return;
       }
 
+      console.log('✅ Validation successful', {
+        videoSize: `${(video.file.size / (1024 * 1024)).toFixed(2)}MB`,
+        thumbnailSize: `${(thumbnail.file.size / 1024).toFixed(2)}KB`,
+        title: formData.title,
+        descriptionLength: formData.description?.length
+      });
+
       // Step 1: Get video upload URL
+      console.log('📡 Requesting video upload credentials...');
       const {
         videoId,
         uploadUrl: videoUploadUrl,
@@ -129,20 +151,33 @@ const UploadPage = () => {
       } = await getVideoUploadUrl();
 
       if (!videoUploadUrl || !videoAccessKey) {
+        console.log('❌ Failed to get video credentials');
         setError("Failed to get video upload credentials");
         return;
       }
 
+      uploadedVideoId = videoId;
+      console.log('✅ Received video credentials', { videoId });
+
       // Step 2: Upload video
+      console.log('📤 Uploading video file...', {
+        name: video.file.name,
+        size: `${(video.file.size / (1024 * 1024)).toFixed(2)}MB`,
+        type: video.file.type
+      });
+      
       try {
         await uploadFileToBunny(video.file, videoUploadUrl, videoAccessKey);
-      } catch (uploadError) {
-        console.error("Video upload error:", uploadError);
-        setError("Failed to upload video. Please try again.");
+        console.log('✅ Video file upload successful');
+      } catch (uploadError: unknown) {
+        const errorMessage = uploadError instanceof Error ? uploadError.message : 'Unknown error';
+        console.error('❌ Video upload error:', uploadError);
+        setError(`Failed to upload video: ${errorMessage}`);
         return;
       }
 
       // Step 3: Get thumbnail credentials
+      console.log('📡 Requesting thumbnail upload credentials...');
       const {
         uploadUrl: thumbnailUploadUrl,
         cdnUrl: thumbnailCdnUrl,
@@ -150,24 +185,36 @@ const UploadPage = () => {
       } = await getThumbnailUploadUrl(videoId);
 
       if (!thumbnailUploadUrl || !thumbnailCdnUrl || !thumbnailAccessKey) {
+        console.log('❌ Failed to get thumbnail credentials');
         setError("Failed to get thumbnail upload credentials");
         return;
       }
+      console.log('✅ Received thumbnail credentials');
 
       // Step 4: Upload thumbnail
+      console.log('📤 Uploading thumbnail...', {
+        name: thumbnail.file.name,
+        size: `${(thumbnail.file.size / 1024).toFixed(2)}KB`,
+        type: thumbnail.file.type
+      });
+      
       try {
-        await uploadFileToBunny(
-          thumbnail.file,
-          thumbnailUploadUrl,
-          thumbnailAccessKey
-        );
-      } catch (uploadError) {
-        console.error("Thumbnail upload error:", uploadError);
-        setError("Failed to upload thumbnail. Please try again.");
+        await uploadFileToBunny(thumbnail.file, thumbnailUploadUrl, thumbnailAccessKey);
+        console.log('✅ Thumbnail upload successful');
+      } catch (uploadError: unknown) {
+        const errorMessage = uploadError instanceof Error ? uploadError.message : 'Unknown error';
+        console.error('❌ Thumbnail upload error:', uploadError);
+        setError(`Failed to upload thumbnail: ${errorMessage}`);
         return;
       }
 
       // Step 5: Save video details
+      console.log('💾 Saving video details...', {
+        videoId,
+        title: formData.title,
+        duration: videoDuration
+      });
+
       try {
         await saveVideoDetails({
           videoId,
@@ -175,23 +222,46 @@ const UploadPage = () => {
           ...formData,
           duration: videoDuration,
         });
+        console.log('✅ Video details saved successfully');
         
-        // Step 6: Wait for video processing
+        // Step 6: Check video processing
+        console.log('⏳ Checking video processing status...');
         const processingCheck = await getVideoProcessingStatus(videoId);
+        console.log('📊 Processing status:', processingCheck);
+        
         if (!processingCheck.isProcessed) {
-          // Wait for processing to complete
+          console.log('⏳ Waiting for processing initialization...');
           await new Promise((resolve) => setTimeout(resolve, 2000));
         }
         
+        console.log('🔄 Redirecting to video page...', { destination: `/video/${videoId}` });
         router.push(`/video/${videoId}`);
-      } catch (saveError) {
-        console.error("Save details error:", saveError);
-        setError("Failed to save video details. Please try again.");
+        console.log('✅ Upload process complete!');
+      } catch (saveError: unknown) {
+        const errorMessage = saveError instanceof Error ? saveError.message : 'Unknown error';
+        console.error('❌ Save details error:', saveError);
+        setError(`Failed to save video details: ${errorMessage}`);
         return;
       }
-    } catch (error) {
-      console.error("Error submitting form:", error);
+    } catch (error: unknown) {
+      console.error("❌ Upload process error:", error);
+      
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      setError(`Upload failed: ${errorMessage}`);
+      
+      // Type guard for response property
+      if (error && typeof error === 'object' && 'response' in error) {
+        const responseError = error as { response: { status: number; text: () => Promise<string> } };
+        console.error('❌ Error response:', {
+          status: responseError.response.status,
+          data: await responseError.response.text().catch(() => 'No response data')
+        });
+      }
     } finally {
+      console.log('🏁 Upload process finished', { 
+        success: !error, 
+        videoId: uploadedVideoId 
+      });
       setIsSubmitting(false);
     }
   };
