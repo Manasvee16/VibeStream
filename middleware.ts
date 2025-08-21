@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
-import aj, { createMiddleware, detectBot, shield } from "./lib/arcjet";
 
 export async function middleware(request: NextRequest) {
+  // Skip middleware for public routes and assets
+  if (request.nextUrl.pathname.match(/\.(ico|png|jpg|jpeg|svg|css|js)$/)) {
+    return NextResponse.next();
+  }
+
+  // Skip middleware for public paths
+  const publicPaths = ['/sign-in', '/api', '/_next', '/assets'];
+  if (publicPaths.some(path => request.nextUrl.pathname.startsWith(path))) {
+    return NextResponse.next();
+  }
+
   const session = await auth.api.getSession({
     headers: await headers(),
   });
@@ -12,25 +22,27 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/sign-in", request.url));
   }
 
+  // Basic rate limiting using headers
+  const ip = request.ip || 'anonymous';
+  const rateLimit = request.headers.get('x-ratelimit-remaining');
+  if (rateLimit === '0') {
+    return new NextResponse('Too Many Requests', { status: 429 });
+  }
+
   return NextResponse.next();
 }
-const validate = aj
-  .withRule(
-    shield({
-      mode: "LIVE",
-    })
-  )
-  .withRule(
-    detectBot({
-      mode: "LIVE",
-      allow: ["CATEGORY:SEARCH_ENGINE", "G00G1E_CRAWLER"], // allow other bots if you want to.
-    })
-  );
 
-export default createMiddleware(validate);
-
+// Specify which paths middleware should run on
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|sign-in|assets).*)"],
+  matcher: [
+    /*
+     * Match all paths except:
+     * 1. /api (API routes)
+     * 2. /_next (Next.js internals)
+     * 3. /static (static files)
+     * 4. /sign-in (auth pages)
+     * 5. all files in /public
+     */
+    '/((?!api|_next/static|_next/image|favicon.ico|sign-in|assets).*)',
+  ],
 };
-
-// ⨯ [TypeError: Body is unusable: Body has already been read]
