@@ -12,22 +12,36 @@ import { FileInput, FormField } from "@/components";
 import { useFileInput } from "@/lib/hooks/useFileInput";
 import { MAX_THUMBNAIL_SIZE, MAX_VIDEO_SIZE } from "@/constants";
 
-const uploadFileToBunny = (
+const uploadFileToBunny = async (
   file: File,
   uploadUrl: string,
   accessKey: string
-): Promise<void> =>
-  fetch(uploadUrl, {
-    method: "PUT",
-    headers: {
-      "Content-Type": file.type,
-      AccessKey: accessKey,
-    },
-    body: file,
-  }).then((response) => {
-    if (!response.ok)
-      throw new Error(`Upload failed with status ${response.status}`);
-  });
+): Promise<void> => {
+  try {
+    const response = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Type": file.type,
+        AccessKey: accessKey,
+      },
+      body: file,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Upload failed:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorText,
+        url: uploadUrl
+      });
+      throw new Error(`Upload failed: ${response.status} - ${errorText}`);
+    }
+  } catch (error) {
+    console.error('Upload error:', error);
+    throw error;
+  }
+};
 
 const UploadPage = () => {
   const router = useRouter();
