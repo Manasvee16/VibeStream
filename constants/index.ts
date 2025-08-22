@@ -55,7 +55,7 @@ export const BUNNY = {
   STORAGE_BASE_URL: "https://storage.bunnycdn.com/mr1-snapcast",
   CDN_URL: "https://mr1-snapcast.b-cdn.net",
   EMBED_URL: "https://iframe.mediadelivery.net/embed",
-  TRANSCRIPT_URL: "https://vz-6c3e63b5-a43.b-cdn.net",
+  TRANSCRIPT_URL: "https://vz-1bceb319-3fd.b-cdn.net",
 };
 
 export const emojis = ["😂", "😍", "👍"];
